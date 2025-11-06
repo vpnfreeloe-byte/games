@@ -1,0 +1,483 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة التركيز - غبار أوضح وكثيف</title>
+    
+    <!-- تحميل Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- تحميل خط Cairo من Google Fonts --><link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            user-select: none;
+            overscroll-behavior: none;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #111827;
+        }
+        
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+        }
+
+        #infoPanel {
+            border-radius: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 10;
+            background-color: rgba(31, 41, 55, 0.8);
+            padding: 1rem;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #111827;
+            touch-action: none;
+        }
+
+        #modal {
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+
+        /* تنسيق أزرار اختيار الوضع */
+        .control-mode-btn {
+            transition: all 0.2s ease-in-out;
+            border: 2px solid transparent;
+        }
+        .control-mode-btn.selected {
+            background-color: #3B82F6; /* blue-500 */
+            border-color: #BFDBFE; /* blue-200 */
+            transform: scale(1.05);
+        }
+        .control-mode-btn:not(.selected) {
+            background-color: #6B7280; /* gray-500 */
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-white flex items-center justify-center">
+
+    <div id="gameContainer">
+        
+        <div id="infoPanel" class="flex justify-between items-center">
+            <span class="text-xl md:text-2xl font-bold">النقاط: <span id="score" class="text-yellow-400">0</span></span>
+            <span class="text-xl md:text-2xl font-bold">السرعة: <span id="speed" class="text-cyan-400">1</span>x</span>
+        </div>
+        
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- شاشة البداية / إعادة اللعب (Modal) --><div id="modal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div class="bg-white text-gray-900 p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+            <h2 id="modalTitle" class="text-3xl font-bold mb-4 text-blue-600">لعبة التركيز</h2>
+            <p id="modalMessage" class="text-lg mb-6">حرّك المربع ليمر عبر اللون الذي يطابق الكلمة، وليس لون الكلمة!</p>
+            
+            <!-- أزرار اختيار وضع التحكم --><p class="text-lg mb-3 font-semibold">اختر وضع التحكم:</p>
+            <div class="flex justify-center space-x-4 mb-6" dir="ltr">
+                <button id="modeDirect" class="control-mode-btn selected w-1/2 p-3 rounded-lg font-bold">
+                    تحكم مباشر
+                    <span class="block text-xs font-normal">(المكعب يتبع إصبعك)</span>
+                </button>
+                <button id="modeOffset" class="control-mode-btn w-1/2 p-3 rounded-lg font-bold">
+                    تحكم من الأسفل
+                    <span class="block text-xs font-normal">(المكعب ثابت بالأعلى)</span>
+                </button>
+            </div>
+            
+            <p id="finalScore" class="text-2xl font-bold mb-6 hidden"></p>
+            <button id="startButton" class="w-full bg-blue-600 text-white px-8 py-3 rounded-lg font-bold text-xl hover:bg-blue-700 transition-all shadow-lg transform hover:scale-105">
+                ابدأ اللعبة
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- إعدادات اللعبة ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const scoreElement = document.getElementById('score');
+        const speedElement = document.getElementById('speed');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const finalScoreElement = document.getElementById('finalScore');
+        const startButton = document.getElementById('startButton');
+        
+        const modeDirectButton = document.getElementById('modeDirect');
+        const modeOffsetButton = document.getElementById('modeOffset');
+
+        const COLORS = [
+            { hex: '#EF4444', name: 'أحمر' },
+            { hex: '#22C55E', name: 'أخضر' },
+            { hex: '#3B82F6', name: 'أزرق' },
+            { hex: '#EAB308', name: 'أصفر' },
+            { hex: '#A855F7', name: 'بنفسجي' },
+            { hex: '#F97316', name: 'برتقالي' }
+        ];
+        
+        const NUM_OBSTACLES = 4;
+        const PLAYER_SIZE = 25; 
+        const OBSTACLE_HEIGHT = 30;
+        const OFFSET_Y_POSITION = 0.7; // 70% من أسفل الشاشة
+
+        // متغيرات حالة اللعبة
+        let player;
+        let obstacles = [];
+        let particles = [];
+        let score = 0;
+        let gameSpeed = 3;
+        let currentCorrectColor;
+        let gameOver = true;
+        let animationFrameId;
+        let distractorText = { text: '...', color: '#FFFFFF' };
+        let playerAnimationProgress = 0;
+        
+        let controlMode = 'direct';
+
+        // --- وظائف اللعبة ---
+
+        function startGame() {
+            score = 0;
+            gameSpeed = 3;
+            gameOver = false;
+            obstacles = [];
+            particles = [];
+            distractorText = { text: '...', color: '#FFFFFF' };
+            playerAnimationProgress = 0;
+            
+            updateScoreUI();
+            
+            modal.classList.add('hidden');
+            
+            resizeCanvas();
+            
+            const initialY = (controlMode === 'offset') 
+                ? canvas.height * OFFSET_Y_POSITION - (PLAYER_SIZE / 2)
+                : canvas.height - PLAYER_SIZE - 40;
+            
+            player = {
+                x: canvas.width / 2 - PLAYER_SIZE / 2,
+                y: initialY, 
+                width: PLAYER_SIZE,
+                height: PLAYER_SIZE,
+                color: '#FFFFFF',
+                prevX: canvas.width / 2 - PLAYER_SIZE / 2,
+                prevY: initialY
+            };
+
+            generateObstacleRow();
+            
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            gameLoop();
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            if (player) {
+                if (controlMode === 'offset') {
+                    player.y = canvas.height * OFFSET_Y_POSITION - (PLAYER_SIZE / 2);
+                } else {
+                    if (player.y + player.height > canvas.height) {
+                        player.y = canvas.height - player.height;
+                    }
+                }
+                if (player.x + player.width > canvas.width) {
+                    player.x = canvas.width - player.width;
+                }
+                player.prevX = player.x;
+                player.prevY = player.y;
+            }
+        }
+
+        function generateObstacleRow() {
+            obstacles = [];
+            const obstacleWidth = canvas.width / NUM_OBSTACLES;
+            
+            let availableColors = [...COLORS].sort(() => 0.5 - Math.random());
+            let rowColors = availableColors.slice(0, NUM_OBSTACLES);
+            currentCorrectColor = rowColors[Math.floor(Math.random() * NUM_OBSTACLES)];
+            
+            let distractorColor;
+            do {
+                distractorColor = rowColors[Math.floor(Math.random() * NUM_OBSTACLES)];
+            } while (distractorColor.hex === currentCorrectColor.hex);
+
+            distractorText.text = currentCorrectColor.name;
+            distractorText.color = distractorColor.hex;
+            
+            for (let i = 0; i < NUM_OBSTACLES; i++) {
+                obstacles.push({
+                    x: i * obstacleWidth,
+                    y: -OBSTACLE_HEIGHT,
+                    width: obstacleWidth,
+                    height: OBSTACLE_HEIGHT,
+                    colorData: rowColors[i]
+                });
+            }
+        }
+
+        function drawRect(obj, color, scale = 1) {
+            ctx.save();
+            ctx.translate(obj.x + obj.width / 2, obj.y + obj.height / 2);
+            ctx.scale(scale, scale);
+            ctx.fillStyle = color;
+            ctx.fillRect(-obj.width / 2, -obj.height / 2, obj.width, obj.height);
+            ctx.restore();
+        }
+
+        function spawnParticle(px, py, velX, velY) {
+            let startX, startY, particleVX, particleVY;
+
+            if (controlMode === 'offset') {
+                startX = px + Math.random() * player.width; 
+                startY = py + player.height; 
+                
+                // *** زيادة سرعة الجزيئات الأفقية والعمودية، وتقليل العشوائية المفرطة ***
+                particleVX = (Math.random() - 0.5) * 1.5; // نطاق أوسع قليلا للانتشار الأفقي
+                particleVY = Math.random() * 1.5 + 0.8; // سرعة أكبر للأسفل
+                
+            } else {
+                startX = px + player.width / 2;
+                startY = py + player.height / 2;
+                
+                // *** زيادة تأثير سرعة اللاعب على الجزيئات، وزيادة العشوائية ***
+                particleVX = -velX * 0.2 + (Math.random() - 0.5) * 1.5; // قوة دفع أكبر
+                particleVY = -velY * 0.2 + (Math.random() - 0.5) * 1.5; // قوة دفع أكبر
+            }
+
+            particles.push({
+                x: startX,
+                y: startY,
+                size: Math.random() * 4 + 3, // *** حجم أكبر للجزيئات ***
+                life: 60, // *** عمر أطول للجزيئات (ضعف السابق) ***
+                vx: particleVX,
+                vy: particleVY,
+            });
+        }
+
+        function updateAndDrawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                p.size *= 0.98; // *** تلاشي حجم أبطأ (0.98 بدلاً من 0.95) ***
+
+                if (p.life <= 0 || p.size < 1) { // *** حد أدنى لحجم الجزيء قبل حذفه ***
+                    particles.splice(i, 1);
+                } else {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${p.life / 60 * 0.7 + 0.3})`; // *** شفافية أولية أعلى ***
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+
+        function updateScoreUI() {
+            scoreElement.innerText = score;
+            gameSpeed = 3 + Math.floor(score / 5) * 0.5;
+            speedElement.innerText = (gameSpeed / 3).toFixed(1) + 'x';
+        }
+
+        function endGame(message) {
+            gameOver = true;
+            cancelAnimationFrame(animationFrameId);
+            
+            modal.classList.remove('hidden');
+            modalTitle.innerText = "لقد خسرت!";
+            modalMessage.innerText = message || "ركز أكثر في المرة القادمة!";
+            finalScoreElement.innerText = `النقاط النهائية: ${score}`;
+            finalScoreElement.classList.remove('hidden');
+            startButton.innerText = "أعد اللعب";
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+
+            // 1. مسح الكانفاس
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 2. حساب سرعة اللاعب
+            let playerVelX = player.x - player.prevX;
+            let playerVelY = (controlMode === 'direct') ? player.y - player.prevY : 0;
+            player.prevX = player.x;
+            player.prevY = player.y;
+
+            // 3. إنشاء غبار
+            const movementMagnitude = Math.sqrt(playerVelX * playerVelX + playerVelY * playerVelY);
+            if (movementMagnitude > 1) { // *** تقليل عتبة الحركة لتوليد غبار أكثر ***
+                for (let i = 0; i < 3; i++) { // *** زيادة عدد الجزيئات المولدة لكل إطار ***
+                    spawnParticle(player.x, player.y, playerVelX, playerVelY);
+                }
+            }
+            
+            // 4. تحديث ورسم الغبار
+            updateAndDrawParticles();
+
+            // 5. تحديث مواقع العوائق
+            let rowTopY = Infinity;
+            if (obstacles.length > 0) {
+                obstacles.forEach(obs => {
+                    obs.y += gameSpeed;
+                });
+                rowTopY = obstacles[0].y;
+            }
+
+            // 6. رسم النص المخادع
+            ctx.fillStyle = distractorText.color;
+            const fontSize = Math.max(24, Math.min(canvas.width / 12, 48));
+            ctx.font = `900 ${fontSize}px "Cairo", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(distractorText.text, canvas.width / 2, rowTopY - 30);
+
+            // 7. تحديث ورسم العوائق
+            let rowPassedScreen = false;
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                
+                drawRect(obs, obs.colorData.hex);
+                ctx.strokeStyle = '#111827';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
+
+                // التحقق من الاصطدام باللاعب
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    if (obs.colorData.hex === currentCorrectColor.hex) {
+                        score++;
+                        updateScoreUI();
+                        generateObstacleRow();
+                        playerAnimationProgress = 1;
+                    } else {
+                        endGame(`لقد اصطدمت باللون ${obs.colorData.name}!`);
+                    }
+                    break;
+                }
+                
+                if (obs.y > canvas.height) {
+                    rowPassedScreen = true;
+                }
+            }
+
+            // 8. رسم اللاعب
+            let playerScale = 1;
+            if (playerAnimationProgress > 0) {
+                playerScale = 1 + Math.sin(playerAnimationProgress * Math.PI) * 0.2;
+                playerAnimationProgress -= 0.05;
+                if (playerAnimationProgress < 0) playerAnimationProgress = 0;
+            }
+            drawRect(player, player.color, playerScale);
+
+
+            // 9. التحقق من تفويت الصف
+            if (rowPassedScreen && !gameOver) {
+                endGame("لقد فاتك الصف بالكامل!");
+            }
+
+            // 10. طلب الإطار التالي
+            if (!gameOver) {
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // --- مستمعو الأحداث ---
+
+        function movePlayer(e) {
+            if (gameOver) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            
+            if (e.touches) {
+                e.preventDefault();
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            let newX = clientX - rect.left - player.width / 2;
+            let newY;
+
+            if (controlMode === 'offset') {
+                newY = canvas.height * OFFSET_Y_POSITION - (PLAYER_SIZE / 2);
+            } else {
+                newY = clientY - rect.top - player.height / 2;
+            }
+
+            if (newX < 0) newX = 0;
+            if (newX + player.width > canvas.width) newX = canvas.width - player.width;
+            
+            if (controlMode === 'direct') {
+                if (newY < 0) newY = 0;
+                if (newY + player.height > canvas.height) newY = canvas.height - player.height;
+            }
+            
+            player.x = newX;
+            player.y = newY;
+        }
+        
+        canvas.addEventListener('mousemove', movePlayer);
+        canvas.addEventListener('touchmove', movePlayer, { passive: false }); 
+        
+        window.addEventListener('resize', () => {
+            if (!gameOver) {
+                resizeCanvas();
+                generateObstacleRow();
+            } else {
+                resizeCanvas();
+            }
+        });
+
+        startButton.addEventListener('click', startGame);
+
+        modeDirectButton.addEventListener('click', () => {
+            controlMode = 'direct';
+            modeDirectButton.classList.add('selected');
+            modeOffsetButton.classList.remove('selected');
+            if (player && !gameOver) {
+                player.y = canvas.height / 2 - PLAYER_SIZE / 2;
+                player.prevY = player.y;
+            }
+        });
+
+        modeOffsetButton.addEventListener('click', () => {
+            controlMode = 'offset';
+            modeOffsetButton.classList.add('selected');
+            modeDirectButton.classList.remove('selected');
+            if (player && !gameOver) {
+                player.y = canvas.height * OFFSET_Y_POSITION - (PLAYER_SIZE / 2);
+                player.prevY = player.y;
+            }
+        });
+
+        resizeCanvas();
+    </script>
+</body>
+</html>
+
