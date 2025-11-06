@@ -106,6 +106,20 @@
     </div>
 
     <script type="module">
+        // PWA: تسجيل Service Worker لتمكين العمل دون اتصال
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            // المسار هنا /games/service-worker.js ضروري لأنه مستضاف على مجلد فرعي
+            navigator.serviceWorker.register('/games/service-worker.js')
+              .then(registration => {
+                console.log('Service Worker registered successfully with scope:', registration.scope);
+              })
+              .catch(error => {
+                console.log('Service Worker registration failed:', error);
+              });
+          });
+        }
+
         // --- إعدادات اللعبة ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
