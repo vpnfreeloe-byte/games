@@ -1,0 +1,27 @@
+{
+  "name": "لعبة مكعب",
+  "short_name": "مكعب",
+  "description": "لعبة مكعب بسيطة وممتعة.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1E90FF",
+  "icons": [
+    {
+      "src": "icon72.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    },
+    {
+      "src": "icon192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
