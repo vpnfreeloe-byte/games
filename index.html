@@ -162,6 +162,10 @@
         let playerAnimationProgress = 0;
         
         let controlMode = 'direct';
+        
+        // --- إضافة جديدة ---
+        // متغير لسياق الصوت
+        let audioCtx;
 
         // --- وظائف اللعبة ---
 
@@ -177,6 +181,13 @@
             updateScoreUI();
             
             modal.classList.add('hidden');
+            
+            // --- إضافة جديدة ---
+            // تهيئة سياق الصوت (يجب أن يتم بعد تفاعل المستخدم)
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            playSound('start'); // تشغيل صوت بدء اللعبة
             
             resizeCanvas();
             
@@ -325,6 +336,46 @@
             finalScoreElement.classList.remove('hidden');
             startButton.innerText = "أعد اللعب";
         }
+        
+        // --- إضافة جديدة ---
+        // وظيفة لتشغيل الأصوات
+        function playSound(type) {
+            if (!audioCtx) return; // لا تشغل شيئاً إذا لم يتم تهيئة الصوت
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            // ضبط مستوى الصوت (منخفض)
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+            switch (type) {
+                case 'start': // صوت بدء اللعبة
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    oscillator.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.1);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
+                    break;
+                case 'score': // صوت تسجيل نقطة
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.2);
+                    break;
+                case 'gameOver': // صوت الخسارة
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    oscillator.frequency.linearRampToValueAtTime(220, audioCtx.currentTime + 0.3);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
+                    break;
+            }
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.5); // إيقاف الصوت بعد نصف ثانية
+        }
+        // --- نهاية الإضافة ---
+
 
         function gameLoop() {
             if (gameOver) return;
@@ -385,10 +436,12 @@
                 ) {
                     if (obs.colorData.hex === currentCorrectColor.hex) {
                         score++;
+                        playSound('score'); // --- إضافة جديدة ---
                         updateScoreUI();
                         generateObstacleRow();
                         playerAnimationProgress = 1;
                     } else {
+                        playSound('gameOver'); // --- إضافة جديدة ---
                         endGame(`لقد اصطدمت باللون ${obs.colorData.name}!`);
                     }
                     break;
@@ -411,6 +464,7 @@
 
             // 9. التحقق من تفويت الصف
             if (rowPassedScreen && !gameOver) {
+                playSound('gameOver'); // --- إضافة جديدة ---
                 endGame("لقد فاتك الصف بالكامل!");
             }
 
